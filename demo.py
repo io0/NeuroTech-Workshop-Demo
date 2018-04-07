@@ -6,7 +6,6 @@ Created on Wed Mar 28 17:35:17 2018
 """
 import numpy as np
 import numpy.fft as fft
-import sys
 import matplotlib.pyplot as plt
 import matplotlib.mlab as mlab
 
@@ -20,8 +19,6 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
-sys.path.append('C://Users//Christopher//Marley//BCI//amplitude-modulation-analysis-module')
-from am_analysis import am_analysis as ama
 
 
 def epoch_data(data, window_length, overlap):
@@ -66,7 +63,7 @@ def draw_specgram(ch, fs_Hz):
     # convert the units of the spectral data
     
     spec_PSDperBin = spec_PSDperHz * fs_Hz / float(NFFT)
-    f_lim_Hz = [0, 50]   # frequency limits for plotting
+    f_lim_Hz = [0, 60]   # frequency limits for plotting
     plt.figure(figsize=(10,5))
     ax = plt.subplot(1,1,1)
     plt.pcolor(spec_t, spec_freqs, 10*np.log10(spec_PSDperBin))  # dB re: 1 uV
@@ -76,75 +73,61 @@ def draw_specgram(ch, fs_Hz):
     plt.xlabel('Time (sec)')
     plt.ylabel('Frequency (Hz)')
     plt.show()
-path = 'C:/Users/Christopher/Marley/OpenBCI/OpenBCI_GUI/SavedData/'
-fname_ec = 'EyesClosedNTXDemo.txt' 
-fname_eo = 'EyesOpenedNTXDemo.txt' 
-data_ec = np.loadtxt(path + fname_ec,
-                  delimiter=',',
-                  skiprows=7,
-                  usecols=(1))
-data_eo = np.loadtxt(path + fname_eo,
-                  delimiter=',',
-                  skiprows=7,
-                  usecols=(1))
-sampling_freq = 250
-window_size = int(3 * sampling_freq)
-window_overlap = int(0.5 * sampling_freq)
-draw_specgram(data_eo, sampling_freq)
+if __name__ == '__main__':
+    fname_ec = 'EyesClosedNTXDemo.txt' 
+    fname_eo = 'EyesOpenedNTXDemo.txt' 
+    data_ec = np.loadtxt(fname_ec,
+                      delimiter=',',
+                      skiprows=7,
+                      usecols=(1))
+    data_eo = np.loadtxt(fname_eo,
+                      delimiter=',',
+                      skiprows=7,
+                      usecols=(1))
+    sampling_freq = 250
+    window_size = int(3 * sampling_freq)
+    window_overlap = int(0.5 * sampling_freq)
+    draw_specgram(data_eo, sampling_freq)
+    
+    data_epochs_ec = epoch_data(data_ec, window_size, window_overlap)
+    data_epochs_eo = epoch_data(data_eo, window_size, window_overlap)
+    
+    ec_features = get_features(data_epochs_ec, sampling_freq)
+    eo_features = get_features(data_epochs_eo, sampling_freq)
+    
+    ec_features = np.hstack((ec_features, np.ones([ec_features.shape[0],1])))
+    eo_features = np.hstack((eo_features, np.zeros([eo_features.shape[0],1])))
+            
+    X = np.vstack((ec_features, eo_features))[:,:-1]
+    Y = np.vstack((ec_features, eo_features))[:,-1]
+    validation_size = 0.20
+    seed = 7
+    X_train, X_validation, Y_train, Y_validation = model_selection.train_test_split(X, Y, test_size=validation_size, random_state=seed)
+    
+    # Test options and evaluation metric
+    seed = 7
+    scoring = 'accuracy'
+    
+    # Spot Check Algorithms
+    models = []
+    models.append(('LR', LogisticRegression()))
+    models.append(('LDA', LinearDiscriminantAnalysis()))
+    models.append(('KNN', KNeighborsClassifier()))
+    models.append(('CART', DecisionTreeClassifier()))
+    models.append(('NB', GaussianNB()))
+    models.append(('SVM', SVC()))
+    # evaluate each model in turn
+    results = []
+    names = []
+    for name, model in models:
+    	kfold = model_selection.KFold(n_splits=10, random_state=seed)
+    	cv_results = model_selection.cross_val_score(model, X_train, Y_train, cv=kfold, scoring=scoring)
+    	results.append(cv_results)
+    	names.append(name)
+    	msg = "%s: %f (%f)" % (name, cv_results.mean(), cv_results.std())
+    	print(msg)
+    
+    
 
-data_epochs_ec = epoch_data(data_ec, window_size, window_overlap)
-data_epochs_eo = epoch_data(data_eo, window_size, window_overlap)
 
-ec_features = get_features(data_epochs_ec, sampling_freq)
-eo_features = get_features(data_epochs_eo, sampling_freq)
 
-ec_features = np.hstack((ec_features, np.ones([ec_features.shape[0],1])))
-eo_features = np.hstack((eo_features, np.zeros([eo_features.shape[0],1])))
-        
-X = np.vstack((ec_features, eo_features))[:,:-1]
-Y = np.vstack((ec_features, eo_features))[:,-1]
-validation_size = 0.20
-seed = 7
-X_train, X_validation, Y_train, Y_validation = model_selection.train_test_split(X, Y, test_size=validation_size, random_state=seed)
-
-# Test options and evaluation metric
-seed = 7
-scoring = 'accuracy'
-
-# Spot Check Algorithms
-models = []
-models.append(('LR', LogisticRegression()))
-models.append(('LDA', LinearDiscriminantAnalysis()))
-models.append(('KNN', KNeighborsClassifier()))
-models.append(('CART', DecisionTreeClassifier()))
-models.append(('NB', GaussianNB()))
-models.append(('SVM', SVC()))
-# evaluate each model in turn
-results = []
-names = []
-for name, model in models:
-	kfold = model_selection.KFold(n_splits=10, random_state=seed)
-	cv_results = model_selection.cross_val_score(model, X_train, Y_train, cv=kfold, scoring=scoring)
-	results.append(cv_results)
-	names.append(name)
-	msg = "%s: %f (%f)" % (name, cv_results.mean(), cv_results.std())
-	print(msg)
-
-lda = SVC()
-lda = lda.fit(X_train, Y_train)
-fname = 'OpenBCI-RAW-2018-03-28_17-32-51.txt' #eyes open
-#fname = 'OpenBCI-RAW-2018-03-28_19-01-06.txt' #eyes open then closed
-#fname = 'OpenBCI-RAW-2018-03-28_18-45-20.txt'
-data_ = np.loadtxt(path + fname,
-                  delimiter=',',
-                  skiprows=7,
-                  usecols=(1))
-data_ep = epoch_data(data_, window_size, window_overlap)
-fe = get_features(data_ep, sampling_freq)
-proba = lda.predict(fe)
-
-sample_ep, _, _ = ama.epoching(sample, 4 * 250, 3.5*250)
-sample_psd = ama.rfft_psd(sample_ep[:,0,:], 250)
-m = np.mean(sample_psd['PSD'], axis=1)
-sample_psd['PSD'] = np.reshape(m, [-1,1])
-ama.plot_psd_data(sample_psd, f_range=np.array([0,60]))
